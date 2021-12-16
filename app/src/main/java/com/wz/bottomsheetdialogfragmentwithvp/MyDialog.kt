@@ -47,17 +47,18 @@ abstract class MyDialog<VB : ViewBinding> : BottomSheetDialogFragment() {
 
     override fun onStart() {
         super.onStart()
-        if (contentHeight == 0) contentHeight = (2340 * heightBias).toInt()
+        if (contentHeight == 0) contentHeight = (2340 * heightBias).toInt() // 此处2340应该替换为xxxUtil.getScreenHeight()
         (dialog as? BottomSheetDialog)?.let {
             it.window?.run {
                 attributes = attributes.apply {
                     dimAmount = shadowAlpha
                 }
             }
+            // 如果是support库，应该换为对应的id
             val bottomSheet: FrameLayout? = it.findViewById(com.google.android.material.R.id.design_bottom_sheet)
             bottomSheet?.let {
                 bottomSheet.layoutParams = (it.layoutParams as? CoordinatorLayout.LayoutParams)?.apply {
-                    // 下面功能会导致部分机型底部 导航栏遮住内容
+                    // 下面这行会导致部分机型底部 导航栏遮住内容，但是绝大部分是好的
                     height = contentHeight
                 }
                 b = BottomSheetBehavior.from(bottomSheet)
@@ -66,24 +67,35 @@ abstract class MyDialog<VB : ViewBinding> : BottomSheetDialogFragment() {
         }
     }
 
+    /**
+     * 此处为vp的情况下的解决方案，如果在其他有两个可滑动的view在BottomSheetDialogFragment里面的话，要自行确定反射时机
+     */
     protected fun setupViewPager(vp: ViewPager) {
         vp.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
             override fun onPageScrolled(p0: Int, p1: Float, p2: Int) { }
             override fun onPageScrollStateChanged(p0: Int) { }
 
             override fun onPageSelected(p0: Int) {
+                // 设置vp的监听,切换tab则反射修改behavior的view。此处加1的缘故是 xml里面的结构是vp嵌套tab(可以免去setupWithViewPager)，所以加一
                 setNestedScrollerView(findScrollingChild(vp.getChildAt(vp.currentItem + 1)))
             }
         })
     }
 
+    /**
+     * 由于nestedScrollingChildRef是私有变量，反射修改behavior判定滑动的view
+     */
     private fun setNestedScrollerView(view: View?) {
-        val declaredField: Field? = BottomSheetBehavior::class.java.getDeclaredField("nestedScrollingChildRef")
-        declaredField?.isAccessible = true
-        declaredField?.set(b, WeakReference(view))
+        BottomSheetBehavior::class.java.getDeclaredField("nestedScrollingChildRef")?.run {
+            isAccessible = true
+            set(b, WeakReference(view))
+        }
     }
 
-    open fun findScrollingChild(view: View): View? {
+    /**
+     * 摘自Behavior的同名方法，用kt简化了下
+     */
+    fun findScrollingChild(view: View): View? {
         return if (ViewCompat.isNestedScrollingEnabled(view)) {
             view
         } else {
@@ -97,7 +109,14 @@ abstract class MyDialog<VB : ViewBinding> : BottomSheetDialogFragment() {
     }
 
     companion object {
+        /**
+         * 默认屏占比
+         */
         private const val DEFAULT_HEIGHT_BIAS = 0.7f
+
+        /**
+         * 默认背景不透明度
+         */
         private const val DEFAULT_SHADOW_ALPHA = 0.5f
     }
 }
